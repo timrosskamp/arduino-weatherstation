@@ -249,12 +249,12 @@ void connectWifi() {
     while( WiFi.status() != WL_CONNECTED ){
         delay(500);
         if( i > 80 ) i = 0;
-        drawProgress(i, "Connecting to WiFi...");
+        drawProgress(i, "Verbinde mit WLAN...");
         i += 10;
         Serial.print(".");
     }
 
-    drawProgress(100, "Connected to WiFi.");
+    drawProgress(100, "WLAN verbunden.");
 
     Serial.println();
     Serial.print("Connected, IP address: ");
@@ -270,7 +270,7 @@ void updateWeatherData() {
 }
 
 void updateData() {
-    drawProgress(50, "Updating weather...");
+    drawProgress(50, "Wetter laden...");
 
     updateWeatherData();
 }
@@ -310,7 +310,7 @@ void drawCurrentWeather() {
 
     tft.loadFont(AA_FONT_LARGE, LittleFS);
     tft.setTextColor(TFT_WHITE, TFT_BLACK);
-    tft.drawString(String(weather.current.temp, 1) + " C", 220, 114);
+    tft.drawString(String(weather.current.temp, 1) + " °C", 220, 114);
 
     tft.loadFont(AA_FONT_SMALL, LittleFS);
     tft.setTextColor(TFT_YELLOW, TFT_BLACK);
@@ -477,12 +477,86 @@ void drawHourlyForecastGraph() {
 }
 
 void drawPrecipitationForecast() {
+    float rainmax = weather.hourly[0].rain > 0 ? weather.hourly[0].rain : weather.hourly[0].snow;
+
+    for( int i = 1; i < 12; i++ ){
+        float r = weather.hourly[i].rain > 0 ? weather.hourly[i].rain : weather.hourly[i].snow;
+
+        if( rainmax < r ){
+            rainmax = r;
+        }
+    }
+
+    // stretch factor for the graph. 1mm = 5px, but 40px is max height.
+    float rscale = min(5.0F, 40 / rainmax);
+
+    // y-coord for every precipitation each hour.
+    float rycoords[12] = {};
+
+    for( int i = 0; i < 12; i++ ){
+        float rain = weather.hourly[i].rain > 0 ? weather.hourly[i].rain : weather.hourly[i].snow;
+
+        rycoords[i] = 240 - rain * rscale;
+    }
+
+    for( int i = 0; i < 12; i++ ){
+        tft.fillRect(i * 20, rycoords[i], 20, rycoords[i] + 80, COLOR_BLUE);
+    }
+
+    tft.loadFont(AA_FONT_SMALL, LittleFS);
+    tft.setTextDatum(BC_DATUM);
+    tft.setTextColor(TFT_WHITE, TFT_BLACK);
+
+    for( int i = 0; i < 6; i++ ){
+        // index in the forecast array
+        int j0 = i * 2;
+        int j1 = j0 + 1;
+        float rain0 = weather.hourly[j0].rain > 0 ? weather.hourly[j0].rain : weather.hourly[j0].snow;
+        float rain1 = weather.hourly[j1].rain > 0 ? weather.hourly[j1].rain : weather.hourly[j1].snow;
+        int tymin = min(rycoords[j0], rycoords[j1]);
+        int x = i * 40 + 20;
+
+        tft.drawString(String(rain0 > rain1 ? rain0 : rain1, 1), x, tymin - 10);
+    }
+
+    tft.setTextDatum(TC_DATUM);
+    tft.setTextColor(TFT_WHITE, COLOR_BLUE);
+
+    for( int i = 0; i < 4; i++ ){
+        int j0 = i * 3;
+        int j1 = j0 + 1;
+        int j2 = j0 + 2;
+
+        float pop0 = weather.hourly[j0].pop;
+        float pop1 = weather.hourly[j1].pop;
+        float pop2 = weather.hourly[j2].pop;
+        float pop = max(pop0, max(pop1, pop2)) * 100;
+
+        int x = i * 60 + 30;
+
+        tft.drawString(String(pop, 0) + " %", x, 250);
+    }
     
+    tft.setTextDatum(BC_DATUM);
+
+    char time_str[11];
+
+    for( int i = 0; i < 3; i++ ){
+        int j = i * 4 + 2;
+        time_t time = weather.hourly[j].dt;
+        struct tm *timeinfo = localtime(&time);
+        int x = i * 80 + 40;
+
+        sprintf(time_str, "%02d:%02d", timeinfo->tm_hour, timeinfo->tm_min);
+        tft.drawString(time_str, x, 310);
+    }
+
+    tft.unloadFont();
 }
 
 // Sinuskurve mit Nullstellen bei x=0, x=1 und Hochpunkt bei (0.5|1).
 float sineHill(float x) {
-    return 0.5 * sin(2 * PI * x - HALF_PI) + 0.5;
+    return 0.5 * sin(TWO_PI * x - HALF_PI) + 0.5;
 }
 
 void drawSunForecast() {
