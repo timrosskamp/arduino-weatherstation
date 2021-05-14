@@ -41,6 +41,8 @@ enum Screens {
 
 int screen;
 
+bool loaded = false;
+
 
 
 String getIconForWeatherId(int id, bool large) {
@@ -234,35 +236,6 @@ void drawProgress(uint8_t percentage, String text) {
     screen = Progress;
 }
 
-void connectWifi() {
-    if( WiFi.status() == WL_CONNECTED ) return;
-    
-    Serial.print("Connecting");
-
-    WiFi.disconnect();
-    WiFi.mode(WIFI_STA);
-    WiFi.hostname(WIFI_HOSTNAME);
-    WiFi.begin(WIFI_SSID, WIFI_PASS);
-
-    int i = 0;
-
-    while( WiFi.status() != WL_CONNECTED ){
-        delay(500);
-        if( i > 80 ) i = 0;
-        drawProgress(i, "Verbinde mit WLAN...");
-        i += 10;
-        Serial.print(".");
-    }
-
-    drawProgress(100, "WLAN verbunden.");
-
-    Serial.println();
-    Serial.print("Connected, IP address: ");
-    Serial.println(WiFi.localIP());
-
-    delay(1000);
-}
-
 void updateWeatherData() {
     OneCall* weatherClient = new OneCall(OPEN_WEATHER_MAP_APP_ID);
 
@@ -306,15 +279,15 @@ void drawCurrentWeather() {
     tft.loadFont(AA_FONT_SMALL, LittleFS);
     tft.setTextDatum(TR_DATUM);
     tft.setTextColor(COLOR_BLUE, TFT_BLACK);
-    tft.drawString(DISPLAYED_CITY_NAME, 220, 95);
+    tft.drawString(DISPLAYED_CITY_NAME, 220, 110);
 
     tft.loadFont(AA_FONT_LARGE, LittleFS);
     tft.setTextColor(TFT_WHITE, TFT_BLACK);
-    tft.drawString(String(weather.current.temp, 1) + " °C", 220, 114);
+    tft.drawString(String(weather.current.temp, 0) + " °C", 220, 134);
 
     tft.loadFont(AA_FONT_SMALL, LittleFS);
     tft.setTextColor(TFT_YELLOW, TFT_BLACK);
-    tft.drawString(weather.current.weather.description, 220, 148);
+    tft.drawString(weather.current.weather.description, 220, 170);
 
     tft.unloadFont();
 }
@@ -423,7 +396,7 @@ void drawHourlyForecastGraph() {
 
     for( int b = 0; b < 13; b++ ){
         float t = weather.hourly[b].temp;
-        tycoords[b] = 240 - (t - tmin) * tscale;
+        tycoords[b] = 270 - (t - tmin) * tscale;
     }
 
     for( int b = 0; b < 12; b++ ){
@@ -496,7 +469,7 @@ void drawPrecipitationForecast() {
     for( int i = 0; i < 12; i++ ){
         float rain = weather.hourly[i].rain > 0 ? weather.hourly[i].rain : weather.hourly[i].snow;
 
-        rycoords[i] = 240 - rain * rscale;
+        rycoords[i] = 246 - rain * rscale;
     }
 
     for( int i = 0; i < 12; i++ ){
@@ -534,7 +507,7 @@ void drawPrecipitationForecast() {
 
         int x = i * 60 + 30;
 
-        tft.drawString(String(pop, 0) + " %", x, 250);
+        tft.drawString(String(pop, 0) + " %", x, 256);
     }
     
     tft.setTextDatum(BC_DATUM);
@@ -654,7 +627,7 @@ void drawScreen(int newScreen) {
     }else if( newScreen == Precipitation ) {
         if( screen == Weather ){
             // Time, CurretWeather already visible, no need to clear them.
-            tft.fillRect(0, 180, 240, 320 - 180, TFT_BLACK);
+            tft.fillRect(0, 186, 240, 320 - 186, TFT_BLACK);
             drawPrecipitationForecast();
         }else{
             tft.fillScreen(TFT_BLACK);
@@ -693,6 +666,10 @@ void setup() {
     Serial.begin(115200);
     Serial.println();
 
+    delay(3000);
+
+    Serial.println("Starting.");
+
     if( !LittleFS.begin() ){
         Serial.println("Flash FS initialisation failed!");
         while(1) yield(); // Stay here twiddling thumbs waiting
@@ -706,8 +683,8 @@ void setup() {
     }
     else Serial.println("Fonts found OK.");
 
-    pinMode(D1, OUTPUT);
-    digitalWrite(D1, HIGH);
+    pinMode(D2, OUTPUT);
+    digitalWrite(D2, HIGH);
 
     // ioDevicePinMode(ioDevice, D1, OUTPUT);
     switches.initialise(ioDevice, true);
@@ -715,14 +692,53 @@ void setup() {
     // Turn on the background LED
     // ioDeviceDigitalWriteS(ioDevice, D1, HIGH);
 
+    switches.addSwitch(D4, [](uint8_t pin, bool held){
+        if( held ){
+            taskManager.scheduleOnce(2, []{
+                digitalWrite(D2, LOW);
+                ESP.deepSleep(0);
+            }, TIME_SECONDS);
+        }else if( loaded ){
+            if( screen >= 4 ){
+                drawScreen(1);
+            }else{
+                drawScreen(screen + 1);
+            }
+        }
+    }, (uint8_t) 255U, false);
+
     tft.begin();
     tft.setRotation(0);
     tft.fillScreen(TFT_BLACK);
 
     configTime(LOCAL_TIMEZONE, NTP_SERVERS);
 
-    connectWifi();
+    if( WiFi.status() != WL_CONNECTED ){
+        Serial.print("Connecting");
 
+        WiFi.mode(WIFI_STA);
+        WiFi.hostname(WIFI_HOSTNAME);
+        WiFi.begin(WIFI_SSID, WIFI_PASS);
+
+        int i = 0;
+
+        while( WiFi.status() != WL_CONNECTED ){
+            delay(500);
+            if( i > 80 ) i = 0;
+            drawProgress(i, "Verbinde mit WLAN...");
+            i += 10;
+            Serial.print(".");
+        }
+
+        drawProgress(100, "WLAN verbunden.");
+
+        Serial.println();
+        Serial.print("Connected, IP address: ");
+        Serial.println(WiFi.localIP());
+
+        delay(1000);
+    }
+    
     // wait until time is valid
     while( time(&now) < NTP_MIN_VALID_EPOCH ){
         delay(300);
@@ -733,20 +749,10 @@ void setup() {
     updateData();
     drawScreen(Screens::Weather);
 
-    switches.addSwitch(D4, [](uint8_t pin, bool held){
-        if( held ){
-            ESP.deepSleep(0);
-        }else{
-            if( screen >= 4 ){
-                drawScreen(1);
-            }else{
-                drawScreen(screen + 1);
-            }
-        }
-    });
-
     time(&now);
     localtime_r(&now, &timeinfo);
+
+    loaded = true;
 
     // Wait until a minute just passed.
     taskManager.scheduleOnce((unsigned int) 62 - timeinfo.tm_sec, []{

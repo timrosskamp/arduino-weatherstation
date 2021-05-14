@@ -2,7 +2,7 @@
 
 union Variant {
   bool boolValue;
-  float numValue;
+  double numValue;
   const char* stringValue;
 };
 
@@ -55,12 +55,12 @@ struct ElementValue {
       return data.stringValue;
     }
 
-    float getFloat() {
+    double getFloat() {
       return data.numValue;
     }
 
     long getInt() {
-      return (long)data.numValue;
+      return (long) data.numValue;
     }
 
     bool isInt() {

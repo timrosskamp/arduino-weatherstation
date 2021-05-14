@@ -52,6 +52,11 @@ void OneCallListener::value(ElementPath path, ElementValue value){
         if( index <= 24 ){
             const char *hourly = path.get(2)->getKey();
 
+            if( strcmp(hourly, "dt") == 0 ){
+                Serial.print(value.getInt());
+                Serial.print("  ");
+            }
+
             if( strcmp(hourly, "dt") == 0 )         data->hourly[index].dt = value.getInt();
             if( strcmp(hourly, "temp") == 0 )       data->hourly[index].temp = value.getFloat();
             if( strcmp(hourly, "feels_like") == 0 ) data->hourly[index].feels_like = value.getFloat();
